@@ -241,7 +241,7 @@ class Program {
         }
     }
 
-    integer parse_integer(const std::string_view &str) const {
+    integer get_integer_literal(const std::string_view &str) const {
         auto parse_nonnegative = [this](const std::string_view &str) {
             integer result = 0;
             for (const char &c : str) {
@@ -265,28 +265,36 @@ class Program {
         return parse_nonnegative(str);
     }
 
-    std::optional<integer>
-    parse_value_inner(const std::string_view &str) const {
-        // integer literal
-        try {
-            return parse_integer(str);
-        } catch (RuntimeError &rte) {}
-        // integer variable
+    integer &get_integer_variable(const std::string_view &str) {
         try {
             if (auto var = variables.find(std::string(str));
                 var != variables.end()) {
                 return std::get<integer>(var->second);
             }
+            throw RuntimeError(
+                pc, "no such integer: '%s'"_format(compress(str).c_str()));
         } catch (std::bad_variant_access &rte) {
             throw RuntimeError(pc, "variable '%s' is not an integer"_format(
                                        compress(str).c_str()));
         }
+    }
+
+    integer &get_array_entry(const std::string_view &str) {}
+
+    std::optional<integer>
+    get_integer_value(const std::string_view &str) {
+        try {
+            return get_integer_literal(str);
+        } catch (RuntimeError &rte) {}
+        try {
+            return get_integer_variable(str);
+        } catch (RuntimeError &rte) {}
         return std::nullopt;
     }
 
-    integer parse_value(const std::string_view &str) const {
+    integer parse_value(const std::string_view &str) {
         // <integer literal|integer variable>
-        if (auto value = parse_value_inner(str); value.has_value()) {
+        if (auto value = get_integer_value(str); value.has_value()) {
             return value.value();
         }
         auto bracket_pos = str.find('[');
@@ -294,18 +302,27 @@ class Program {
             auto array = str.substr(0, bracket_pos);
             auto index =
                 str.substr(bracket_pos + 1, str.size() - bracket_pos - 2);
-            if (auto index_value = parse_value_inner(str);
-                index_value.has_value()) {
-                return index_value.value();
-            }
             validate_identifier(array);
             if (auto var = variables.find(std::string(array));
                 var != variables.end()) {
-                auto array_var = std::get<std::vector<integer>>(var->second);
-            } else {
+                const auto &array_var =
+                    std::get<std::vector<integer>>(var->second);
+                if (auto index_value = get_integer_value(index);
+                    index_value.has_value()) {
+                    integer index_int = index_value.value();
+                    if (index_int < 0 ||
+                        index_int >= (integer)array_var.size()) {
+                        throw RuntimeError(
+                            pc, "index %s[%lld] out of bounds"_format(
+                                    compress(array).c_str(), index_int));
+                    }
+                    return array_var[index_int];
+                }
                 throw RuntimeError(
-                    pc, "no such array: '%s'"_format(compress(array).c_str()));
+                    pc, "invalid index: '%s'"_format(compress(array).c_str()));
             }
+            throw RuntimeError(
+                pc, "no such array: '%s'"_format(compress(array).c_str()));
         }
         throw RuntimeError(
             pc, "cannot parse integer '%s'"_format(compress(str).c_str()));
