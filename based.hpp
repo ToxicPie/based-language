@@ -52,7 +52,7 @@ class ProgramException : std::exception {
         message = "line %d: %s"_format(line + 1, error.c_str());
     }
 
-    const char *what() const noexcept override {
+    const char *what() const noexcept final {
         return message.c_str();
     }
 
@@ -60,7 +60,7 @@ class ProgramException : std::exception {
     std::string message;
 };
 
-class CompileError : ProgramException {
+class CompileError : public ProgramException {
   public:
     CompileError(int line, const std::string &error)
         : ProgramException(line,
@@ -68,18 +68,19 @@ class CompileError : ProgramException {
                                compress(error, 60).c_str())) {}
 };
 
-class RuntimeError : ProgramException {
+class RuntimeError : public ProgramException {
   public:
     RuntimeError(int line, const std::string &error)
         : ProgramException(line, "ya code got l + ratioed because %s"_format(
                                      error.c_str())) {}
 };
 
-class TimeLimitExceeded : ProgramException {
+class TimeLimitExceeded : public ProgramException {
   public:
     explicit TimeLimitExceeded(int line)
         : ProgramException(line, "you have skill issue on speed smh") {}
 };
+
 
 class Program {
   public:
@@ -95,6 +96,7 @@ class Program {
             if (!instruction.valid()) {
                 throw CompileError(line, code[line]);
             }
+            instructions.push_back(instruction);
         }
     }
 
@@ -109,6 +111,7 @@ class Program {
     template <typename T> T fetch_output() {
         T ret = std::get<T>(output.back());
         output.pop_back();
+        return ret;
     }
 
     bool has_output() const {
@@ -116,7 +119,9 @@ class Program {
     }
 
     void run(size_t max_steps) {
-        for (size_t step = 0; !returned || step < max_steps; step++) {}
+        for (size_t step = 0; !returned && step < max_steps; step++) {
+            single_step();
+        }
         if (returned) {
             return;
         }
@@ -144,7 +149,7 @@ class Program {
             }
             if (tokens.size() == 2 && //
                 tokens[0] == "yeet") {
-                opcode = Input;
+                opcode = Output;
                 parameters = {tokens[1]};
                 return;
             }
@@ -241,13 +246,22 @@ class Program {
         }
     }
 
-    integer get_integer_literal(const std::string_view &str) const {
+    bool is_identifier(const std::string_view &str) const {
+        try {
+            validate_identifier(str);
+            return true;
+        } catch (RuntimeError &rte) {
+            return false;
+        }
+    }
+
+    integer parse_integer_literal(const std::string_view &str) const {
         auto parse_nonnegative = [this](const std::string_view &str) {
             integer result = 0;
             for (const char &c : str) {
                 if (!std::isdigit(c)) {
                     throw RuntimeError(pc,
-                                       "'%s' is not an integer literal"_format(
+                                       "failed to parse integer '%s'"_format(
                                            compress(str).c_str()));
                 }
                 result = result * 10 + (c - '0');
@@ -279,12 +293,12 @@ class Program {
         }
     }
 
-    integer &get_array_entry(const std::string_view &str) {}
-
-    std::optional<integer>
-    get_integer_value(const std::string_view &str) {
+    std::optional<integer> get_integer_value(const std::string_view &str) {
+        if (str.empty()) {
+            throw RuntimeError(pc, "expected number, found empty string");
+        }
         try {
-            return get_integer_literal(str);
+            return parse_integer_literal(str);
         } catch (RuntimeError &rte) {}
         try {
             return get_integer_variable(str);
@@ -292,53 +306,66 @@ class Program {
         return std::nullopt;
     }
 
-    integer parse_value(const std::string_view &str) {
-        // <integer literal|integer variable>
-        if (auto value = get_integer_value(str); value.has_value()) {
-            return value.value();
-        }
+    integer &parse_array_entry(const std::string_view &str) {
         auto bracket_pos = str.find('[');
-        if (bracket_pos != std::string_view::npos && str.back() == ']') {
-            auto array = str.substr(0, bracket_pos);
-            auto index =
-                str.substr(bracket_pos + 1, str.size() - bracket_pos - 2);
-            validate_identifier(array);
-            if (auto var = variables.find(std::string(array));
-                var != variables.end()) {
-                const auto &array_var =
-                    std::get<std::vector<integer>>(var->second);
-                if (auto index_value = get_integer_value(index);
-                    index_value.has_value()) {
-                    integer index_int = index_value.value();
-                    if (index_int < 0 ||
-                        index_int >= (integer)array_var.size()) {
-                        throw RuntimeError(
-                            pc, "index %s[%lld] out of bounds"_format(
-                                    compress(array).c_str(), index_int));
-                    }
-                    return array_var[index_int];
+        auto array = str.substr(0, bracket_pos);
+        auto index = str.substr(bracket_pos + 1, str.size() - bracket_pos - 2);
+        validate_identifier(array);
+        if (auto var = variables.find(std::string(array));
+            var != variables.end()) {
+            auto &array_var = std::get<std::vector<integer>>(var->second);
+            if (auto index_value = get_integer_value(index);
+                index_value.has_value()) {
+                integer index_int = index_value.value();
+                if (index_int < 0 || index_int >= (integer)array_var.size()) {
+                    throw RuntimeError(pc,
+                                       "index %s[%lld] out of bounds"_format(
+                                           compress(array).c_str(), index_int));
                 }
-                throw RuntimeError(
-                    pc, "invalid index: '%s'"_format(compress(array).c_str()));
+                return array_var[index_int];
             }
             throw RuntimeError(
-                pc, "no such array: '%s'"_format(compress(array).c_str()));
+                pc, "invalid index: '%s'"_format(compress(array).c_str()));
         }
         throw RuntimeError(
-            pc, "cannot parse integer '%s'"_format(compress(str).c_str()));
+            pc, "no such array: '%s'"_format(compress(array).c_str()));
     }
 
-    integer &parse_reference(const std::string_view &str) const {
-        // valid formats:
+    static bool is_array_entry(const std::string_view &str) {
+        return str.find('[') != std::string_view::npos && str.back() == ']';
+    }
+
+    integer parse_value(const std::string_view &str) {
         // <integer variable>
-        // <array variable>[<integer literal>]
-        // <array variable>[<integer variable>]
+        if (is_identifier(str)) {
+            return get_integer_variable(str);
+        }
+        // <array variable>[<integer literal|integer variable>]
+        if (is_array_entry(str)) {
+            return parse_array_entry(str);
+        }
+        // <integer literal>
+        return parse_integer_literal(str);
+    }
+
+    integer &parse_reference(const std::string_view &str) {
+        // <integer variable>
+        if (is_identifier(str)) {
+            return get_integer_variable(str);
+        }
+        // <array variable>[<integer literal|integer variable>]
+        if (is_array_entry(str)) {
+            return parse_array_entry(str);
+        }
+        throw RuntimeError(pc, "cannot parse '%s' as an &mut integer"_format(
+                                   compress(str).c_str()));
     }
 
     void single_step() {
         if (pc < 0 || pc >= (int)instructions.size()) {
             throw RuntimeError(pc, "that's not even a line");
         }
+        int next_pc = pc + 1;
         const auto &[opcode, parameters] = instructions[pc];
         switch (opcode) {
         case Instruction::Nop: {
@@ -346,7 +373,7 @@ class Program {
         }
         case Instruction::Input: {
             if (input.empty()) {
-                throw RuntimeError(pc, "you're reading from nothin");
+                throw RuntimeError(pc, "you're reading from nothing");
             }
             std::string dest = parameters[0];
             validate_identifier(dest);
@@ -356,26 +383,39 @@ class Program {
         }
         case Instruction::Output: {
             std::string src = parameters[0];
+            validate_identifier(src);
+            if (const auto var = variables.find(src); var != variables.end()) {
+                output.push_back(var->second);
+            } else {
+                throw RuntimeError(pc, "you're printing nothing");
+            }
             break;
         }
         case Instruction::Assign: {
             std::string dest = parameters[0], src = parameters[1];
+            parse_reference(dest) = parse_value(src);
             break;
         }
         case Instruction::Add: {
             std::string dest = parameters[0], src = parameters[1];
+            parse_reference(dest) += parse_value(src);
             break;
         }
         case Instruction::Sub: {
             std::string dest = parameters[0], src = parameters[1];
+            parse_reference(dest) -= parse_value(src);
             break;
         }
         case Instruction::Compare: {
-            std::string src1 = parameters[0], src2 = parameters[1];
+            std::string dest = parameters[0], src = parameters[1];
+            if (!(parse_value(dest) > parse_value(src))) {
+                next_pc = pc + 2;
+            }
             break;
         }
         case Instruction::Jump: {
             std::string src = parameters[0];
+            next_pc = parse_integer_literal(src) - 1;
             break;
         }
         case Instruction::Return: {
@@ -386,6 +426,7 @@ class Program {
             throw RuntimeError(pc, "that's not even a line");
         }
         }
+        pc = next_pc;
     }
 
     std::vector<Instruction> instructions;
