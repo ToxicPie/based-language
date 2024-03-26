@@ -47,11 +47,6 @@ constexpr std::enable_if_t<std::is_unsigned_v<T>, T> rotr(T x, int s) {
     return (x >> r) | (x << (N - r));
 }
 
-template <typename T>
-constexpr std::enable_if_t<std::is_unsigned_v<T>, bool> has_single_bit(T x) {
-    return x && !(x & (x - 1));
-}
-
 }; // namespace std
 
 #endif
