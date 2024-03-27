@@ -1,8 +1,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <deque>
 #include <exception>
-#include <iostream>
 #include <iterator>
 #include <optional>
 #include <sstream>
@@ -109,8 +109,8 @@ class Program {
     }
 
     template <typename T> T fetch_output() {
-        T ret = std::get<T>(output.back());
-        output.pop_back();
+        T ret = std::get<T>(output.front());
+        output.pop_front();
         return ret;
     }
 
@@ -279,10 +279,15 @@ class Program {
         return parse_nonnegative(str);
     }
 
-    integer &get_integer_variable(const std::string_view &str) {
+    integer &get_integer_variable(const std::string_view &str,
+                                  bool allow_missing = false) {
         try {
             if (auto var = variables.find(std::string(str));
                 var != variables.end()) {
+                return std::get<integer>(var->second);
+            }
+            if (allow_missing) {
+                auto var = variables.insert({std::string(str), 0}).first;
                 return std::get<integer>(var->second);
             }
             throw RuntimeError(
@@ -313,19 +318,25 @@ class Program {
         validate_identifier(array);
         if (auto var = variables.find(std::string(array));
             var != variables.end()) {
-            auto &array_var = std::get<std::vector<integer>>(var->second);
-            if (auto index_value = get_integer_value(index);
-                index_value.has_value()) {
-                integer index_int = index_value.value();
-                if (index_int < 0 || index_int >= (integer)array_var.size()) {
-                    throw RuntimeError(pc,
-                                       "index %s[%lld] out of bounds"_format(
-                                           compress(array).c_str(), index_int));
+            try {
+                auto &array_var = std::get<std::vector<integer>>(var->second);
+                if (auto index_value = get_integer_value(index);
+                    index_value.has_value()) {
+                    integer index_int = index_value.value();
+                    if (index_int < 0 ||
+                        index_int >= (integer)array_var.size()) {
+                        throw RuntimeError(
+                            pc, "index %s[%lld] out of bounds"_format(
+                                    compress(array).c_str(), index_int));
+                    }
+                    return array_var[index_int];
                 }
-                return array_var[index_int];
+                throw RuntimeError(
+                    pc, "invalid index: '%s'"_format(compress(index).c_str()));
+            } catch (std::bad_variant_access &ex) {
+                throw RuntimeError(
+                    pc, "'%s' is not an array"_format(compress(array).c_str()));
             }
-            throw RuntimeError(
-                pc, "invalid index: '%s'"_format(compress(array).c_str()));
         }
         throw RuntimeError(
             pc, "no such array: '%s'"_format(compress(array).c_str()));
@@ -348,10 +359,11 @@ class Program {
         return parse_integer_literal(str);
     }
 
-    integer &parse_reference(const std::string_view &str) {
+    integer &parse_reference(const std::string_view &str,
+                             bool allow_missing = false) {
         // <integer variable>
         if (is_identifier(str)) {
-            return get_integer_variable(str);
+            return get_integer_variable(str, allow_missing);
         }
         // <array variable>[<integer literal|integer variable>]
         if (is_array_entry(str)) {
@@ -377,8 +389,8 @@ class Program {
             }
             std::string dest = parameters[0];
             validate_identifier(dest);
-            variables[dest] = std::move(input.back());
-            input.pop_back();
+            variables[dest] = std::move(input.front());
+            input.pop_front();
             break;
         }
         case Instruction::Output: {
@@ -393,7 +405,7 @@ class Program {
         }
         case Instruction::Assign: {
             std::string dest = parameters[0], src = parameters[1];
-            parse_reference(dest) = parse_value(src);
+            parse_reference(dest, true) = parse_value(src);
             break;
         }
         case Instruction::Add: {
@@ -435,7 +447,7 @@ class Program {
     // compared to std::hash.
     std::unordered_map<std::string, variable, hash_lib::SipHasher<1, 3>>
         variables;
-    std::vector<variable> input, output;
+    std::deque<variable> input, output;
     int pc;
     bool returned;
 };
