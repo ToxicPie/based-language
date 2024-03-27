@@ -395,11 +395,15 @@ class Program {
         }
         case Instruction::Output: {
             std::string src = parameters[0];
-            validate_identifier(src);
-            if (const auto var = variables.find(src); var != variables.end()) {
-                output.push_back(var->second);
+            if (is_identifier(src)) {
+                if (const auto var = variables.find(src);
+                    var != variables.end()) {
+                    output.push_back(var->second);
+                } else {
+                    throw RuntimeError(pc, "you're printing nothing");
+                }
             } else {
-                throw RuntimeError(pc, "you're printing nothing");
+                output.emplace_back(parse_value(src));
             }
             break;
         }
@@ -450,6 +454,7 @@ class Program {
     std::deque<variable> input, output;
     int pc;
     bool returned;
+    size_t total_runtime;
 };
 
 } // namespace based
