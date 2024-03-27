@@ -5,9 +5,6 @@
 #include "codeforces-bit.hpp"
 
 
-namespace hash_lib {
-
-
 #if defined(_WIN32)
 #define CODEFORCES 1
 #endif
@@ -60,6 +57,9 @@ void fill_random_bytes(void *buffer, size_t len) {
 #endif // defined(CODEFORCES)
 
 #endif // defined(_WIN32)
+
+
+namespace hash_lib {
 
 
 template <size_t C, size_t D> class SipHash {
