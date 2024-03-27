@@ -71,7 +71,7 @@ class CompileError : public ProgramException {
 class RuntimeError : public ProgramException {
   public:
     RuntimeError(int line, const std::string &error)
-        : ProgramException(line, "ya code got l + ratioed because %s"_format(
+        : ProgramException(line, "ya code got L + ratioed because %s"_format(
                                      error.c_str())) {}
 };
 
