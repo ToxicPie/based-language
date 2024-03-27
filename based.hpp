@@ -89,14 +89,16 @@ class Program {
 
     Program() = delete;
     explicit Program(const std::vector<std::string> &code)
-        : pc(0), returned(false) {
+        : pc(0), returned(false), total_runtime(0) {
         instructions.reserve(code.size());
+        costs.reserve(code.size());
         for (size_t line = 0; line < code.size(); line++) {
             Instruction instruction(code[line]);
             if (!instruction.valid()) {
                 throw CompileError(line, code[line]);
             }
             instructions.push_back(instruction);
+            costs.push_back(code[line].size() + NOP_COST);
         }
     }
 
@@ -118,8 +120,8 @@ class Program {
         return !output.empty();
     }
 
-    void run(size_t max_steps) {
-        for (size_t step = 0; !returned && step < max_steps; step++) {
+    void run(size_t max_runtime) {
+        while (!returned && total_runtime < max_runtime) {
             single_step();
         }
         if (returned) {
@@ -378,6 +380,7 @@ class Program {
             throw RuntimeError(pc, "that's not even a line");
         }
         int next_pc = pc + 1;
+        total_runtime += costs[pc];
         const auto &[opcode, parameters] = instructions[pc];
         switch (opcode) {
         case Instruction::Nop: {
@@ -445,6 +448,8 @@ class Program {
         pc = next_pc;
     }
 
+    static constexpr size_t NOP_COST = 5;
+
     std::vector<Instruction> instructions;
     // we are handling arbitrary strings from untrusted users.
     // using siphash makes it much more difficult to generate collisions
@@ -454,6 +459,7 @@ class Program {
     std::deque<variable> input, output;
     int pc;
     bool returned;
+    std::vector<size_t> costs;
     size_t total_runtime;
 };
 

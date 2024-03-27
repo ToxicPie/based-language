@@ -2,6 +2,7 @@
 #include <exception>
 #include <iostream>
 #include <random>
+#include <set>
 #include <variant>
 #include <vector>
 
@@ -14,6 +15,11 @@ using namespace std;
 rand_lib::ChaChaRng<12> global_rng(rand_lib::derive_seed(0xba5ed));
 
 uniform_int_distribution<long long> int_dist(-1e18, 1e18);
+
+
+bool all_distinct(const vector<long long> &a) {
+    return set(a.begin(), a.end()).size() == a.size();
+}
 
 
 class WrongAnswer : std::exception {
@@ -37,13 +43,14 @@ class Problem {
     explicit Problem(based::Program program)
         : prog(std::move(program)), correct_answer(0) {}
 
-    void run_and_check_answer(size_t steps) {
-        prog.run(steps);
+    void run_and_check_answer(size_t max_runtime) {
+        prog.run(max_runtime);
         if (!prog.has_output()) {
             throw WrongAnswer("print something");
         }
         try {
             auto output = prog.fetch_output<long long>();
+            cout << output << '\n';
             if (output != correct_answer) {
                 throw WrongAnswer("git gud");
             }
@@ -83,7 +90,9 @@ class Problem3 : public Problem {
   public:
     Problem3(based::Program program, int n) : Problem(std::move(program)) {
         vector<long long> a(n);
-        generate(a.begin(), a.end(), [] { return int_dist(global_rng); });
+        do {
+            generate(a.begin(), a.end(), [] { return int_dist(global_rng); });
+        } while (!all_distinct(a));
         prog.add_input(n);
         prog.add_input(a);
         correct_answer = *max_element(a.begin(), a.end());
@@ -95,7 +104,12 @@ class Problem4 : public Problem {
     Problem4(based::Program program, int n) : Problem(std::move(program)) {
         vector<long long> a(n);
         int k = uniform_int_distribution<int>(1, n)(global_rng);
-        generate(a.begin(), a.end(), [] { return int_dist(global_rng); });
+        do {
+            generate(a.begin(), a.end(), [] { return int_dist(global_rng); });
+        } while (!all_distinct(a));
+        cout << n << ' ' << k << '\n';
+        for (auto i : a) cout << i << ' ';
+        cout << '\n';
         prog.add_input(n);
         prog.add_input(a);
         prog.add_input(k);
@@ -123,19 +137,21 @@ int main(int argc, char **argv) {
         based::Program prog(code);
         if (type == 1) {
             for (int i = 0; i < 10; i++) {
-                Problem1(prog).run_and_check_answer(10000);
+                Problem1(prog).run_and_check_answer(100000);
             }
         } else if (type == 2) {
             for (int i = 0; i < 10; i++) {
-                Problem2(prog).run_and_check_answer(10000);
+                Problem2(prog).run_and_check_answer(100000);
             }
         } else if (type == 3) {
             for (int i = 1; i <= 50; i++) {
-                Problem3(prog, i).run_and_check_answer(10000);
+                Problem3(prog, i).run_and_check_answer(100000);
             }
         } else if (type == 4) {
             for (int i = 1; i <= 50; i++) {
-                Problem4(prog, i).run_and_check_answer(100000);
+                for (int j = 0; j < (25 + i) / i; j++) {
+                    Problem4(prog, i).run_and_check_answer(2500000);
+                }
             }
         } else {
             cout << "Unknown type " << type << '\n';
