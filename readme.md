@@ -4,7 +4,7 @@ Reference implementations of the joke language used in [this Codeforces April Fo
 
 ## Rust Checker
 
-This is the current version used on Codeforces. The one used during contest was the C++ one below. It was replaced later with a Rust rewrite due to some implementation issues.
+This is the current version used on Codeforces. The one used during contest was based on the C++ version below, but it was replaced later with a Rust rewrite due to some implementation issues.
 
 Compile with
 
