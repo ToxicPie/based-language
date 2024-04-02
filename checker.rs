@@ -49,6 +49,7 @@ enum Verdict {
     RuntimeError(usize, String),
     CompileError(usize, String),
     Based(),
+    OtherError(String),
 }
 
 struct CheckerFail(String);
@@ -508,7 +509,10 @@ fn work() -> Result<Verdict, CheckerFail> {
     };
     let task = std::fs::read_to_string(inf)?.trim().parse()?;
     match judge(task, ans) {
-        Ok(Verdict::Correct()) => judge(task, ouf),
+        Ok(Verdict::Correct()) => match judge(task, ouf) {
+            Ok(verdict) => Ok(verdict),
+            Err(error) => Ok(Verdict::OtherError(error.0)),
+        },
         Ok(verdict) => Err(CheckerFail(format!(
             "jury's solution failed with verdict {:?}",
             verdict
@@ -554,6 +558,11 @@ fn main() {
             eprintln!(
                 r#""Based"? Are you kidding me? I spent a decent portion of my life preparing this problem and your submission to it is "Based"? What do I have to say to you? Absolutely nothing. I couldn't be bothered to respond to such meaningless attempt at writing code. Do you want "Based" on your Codeforces profile?"#,
             );
+            std::process::exit(1);
+        }
+        // polygon does weird things...
+        Ok(OtherError(message)) => {
+            eprintln!("unexpected error in participant output: {}", message);
             std::process::exit(1);
         }
     }
