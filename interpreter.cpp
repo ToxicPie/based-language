@@ -2,10 +2,8 @@
 #include <vector>
 
 #include "based.hpp"
-#include "chacha-cpp17.hpp"
 
 using namespace std;
-
 
 int main() {
     vector<string> code;
@@ -16,9 +14,10 @@ int main() {
 
     try {
         based::Program prog(code);
-        prog.add_input(123);
-        prog.add_input(456);
-        prog.run(10000);
+        prog.add_input(5);
+        prog.add_input({1, -1, 2, -3, 5});
+        prog.add_input(3);
+        prog.run(1000000);
         if (prog.has_output()) {
             cout << prog.fetch_output<based::Program::integer>() << '\n';
         }
