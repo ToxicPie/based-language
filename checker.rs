@@ -326,7 +326,12 @@ impl Program {
                         format!("simp operand must be a constant"),
                     ));
                 };
-                next_pc = (line - 1) as usize;
+                next_pc = line
+                    .checked_sub(1)
+                    .and_then(|line| line.try_into().ok())
+                    .ok_or_else(|| {
+                        Verdict::RuntimeError(cur_pc, format!("simp operand must be positive"))
+                    })?;
             }
             Instruction::Return() => {
                 self.returned = true;
@@ -543,14 +548,16 @@ fn main() {
         Ok(RuntimeError(line, message)) => {
             eprintln!(
                 "ya code got L + ratioed on line {} because {}",
-                line, message
+                line + 1,
+                message
             );
             std::process::exit(1);
         }
         Ok(CompileError(line, message)) => {
             eprintln!(
                 "jesse, what are you talking about on line {}? {}",
-                line, message
+                line + 1,
+                message
             );
             std::process::exit(1);
         }
