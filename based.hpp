@@ -258,8 +258,9 @@ class Program {
     }
 
     integer parse_integer_literal(const std::string_view &str) const {
-        auto parse_nonnegative = [this](const std::string_view &str) {
-            integer result = 0;
+        auto parse_nonnegative =
+            [this](const std::string_view &str) -> unsigned long long {
+            unsigned long long result = 0;
             for (const char &c : str) {
                 if (!std::isdigit(c)) {
                     throw RuntimeError(pc,
@@ -273,12 +274,17 @@ class Program {
                                    "integer literal '%s' is too long"_format(
                                        compress(str).c_str()));
             }
+            if (str.empty()) {
+                throw RuntimeError(pc,
+                                   "empty integer literal"_format(
+                                       compress(str).c_str()));
+            }
             return result;
         };
         if (str[0] == '-') {
-            return -parse_nonnegative(str.substr(1));
+            return -(integer)parse_nonnegative(str.substr(1));
         }
-        return parse_nonnegative(str);
+        return (integer)parse_nonnegative(str);
     }
 
     integer &get_integer_variable(const std::string_view &str,
@@ -326,7 +332,7 @@ class Program {
                     index_value.has_value()) {
                     integer index_int = index_value.value();
                     if (index_int < 0 ||
-                        index_int >= (integer)array_var.size()) {
+                        (size_t)index_int >= array_var.size()) {
                         throw RuntimeError(
                             pc, "index %s[%lld] out of bounds"_format(
                                     compress(array).c_str(), index_int));
